@@ -82,7 +82,7 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// Submit lamaran endpoint with enhanced error handling
+// Submit lamaran endpoint with proper timeout handling
 app.post('/api/submit-lamaran', async (req, res) => {
     console.log('📥 Received submission:', {
         headers: req.headers,
@@ -98,13 +98,26 @@ app.post('/api/submit-lamaran', async (req, res) => {
             });
         }
 
-        // Add timeout to save operation
         const lamaranData = new Lamaran(req.body);
-        const savedData = await lamaranData.save()
-            .timeout(15000) // 15 second timeout for save operation
-            .catch(err => {
-                throw new Error(`Save operation timed out: ${err.message}`);
-            });
+        
+        // Create a timeout promise
+        const saveWithTimeout = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Save operation timed out after 15 seconds'));
+            }, 15000);
+
+            lamaranData.save()
+                .then(result => {
+                    clearTimeout(timeout);
+                    resolve(result);
+                })
+                .catch(err => {
+                    clearTimeout(timeout);
+                    reject(err);
+                });
+        });
+
+        const savedData = await saveWithTimeout;
         
         console.log('💾 Saved successfully:', savedData._id);
         
@@ -122,7 +135,7 @@ app.post('/api/submit-lamaran', async (req, res) => {
         if (error.name === 'ValidationError') {
             statusCode = 400;
             errorMessage = Object.values(error.errors).map(e => e.message).join(', ');
-        } else if (error.name === 'MongooseError' && error.message.includes('timed out')) {
+        } else if (error.message.includes('timed out')) {
             errorMessage = 'Database operation timed out. Please try again.';
         }
         
