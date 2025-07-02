@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
@@ -8,7 +9,7 @@ const app = express();
 
 // Enhanced CORS configuration
 app.use(cors({
-    origin: process.env.FRONTEND_URL || '*', // Better security than '*'
+    origin: process.env.FRONTEND_URL || '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -19,34 +20,69 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
+// Improved MongoDB connection with robust error handling
+const connectWithRetry = () => {
+  mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/fallbackdb', {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 30000,
+    maxPoolSize: 10,
+    retryWrites: true,
+    w: 'majority'
+  })
+  .then(() => console.log('✅ MongoDB connected successfully'))
+  .catch(err => {
+    console.error('❌ MongoDB connection error:', err.message);
+    console.log('🔄 Retrying connection in 5 seconds...');
+    setTimeout(connectWithRetry, 5000);
+  });
+};
 
+connectWithRetry();
 
-
-// MongoDB connection with improved configuration
-mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/fallbackdb', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
+// MongoDB connection events
+mongoose.connection.on('connected', () => {
+  console.log('📊 MongoDB connected to:', mongoose.connection.host);
 });
 
-// Import Lamaran Model using dynamic import for better error handling
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err.message);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️ MongoDB disconnected');
+});
+
+// Import Lamaran Model with better error handling
 let Lamaran;
 try {
-    Lamaran = require('../models/lamaran');
+    Lamaran = require('./models/lamaran'); // Changed from '../models' to './models'
 } catch (err) {
     console.error("❌ Failed to load Lamaran model:", err);
     process.exit(1);
 }
 
-// Health check endpoint
+// Health check endpoint with detailed DB status
 app.get('/api/health', (req, res) => {
+    const dbStatus = mongoose.connection.readyState;
+    const statusMap = {
+        0: 'disconnected',
+        1: 'connected',
+        2: 'connecting',
+        3: 'disconnecting'
+    };
+    
     res.status(200).json({
         status: 'healthy',
         timestamp: new Date(),
-        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        database: statusMap[dbStatus] || 'unknown',
+        dbHost: mongoose.connection.host || 'unknown',
+        dbName: mongoose.connection.name || 'unknown'
     });
 });
 
-// Submit lamaran endpoint with enhanced validation
+// Submit lamaran endpoint with enhanced error handling
 app.post('/api/submit-lamaran', async (req, res) => {
     console.log('📥 Received submission:', {
         headers: req.headers,
@@ -54,7 +90,7 @@ app.post('/api/submit-lamaran', async (req, res) => {
     });
 
     try {
-        // Basic validation
+        // Validate request body
         if (!req.body || Object.keys(req.body).length === 0) {
             return res.status(400).json({
                 success: false,
@@ -62,8 +98,13 @@ app.post('/api/submit-lamaran', async (req, res) => {
             });
         }
 
+        // Add timeout to save operation
         const lamaranData = new Lamaran(req.body);
-        const savedData = await lamaranData.save();
+        const savedData = await lamaranData.save()
+            .timeout(15000) // 15 second timeout for save operation
+            .catch(err => {
+                throw new Error(`Save operation timed out: ${err.message}`);
+            });
         
         console.log('💾 Saved successfully:', savedData._id);
         
@@ -75,19 +116,21 @@ app.post('/api/submit-lamaran', async (req, res) => {
     } catch (error) {
         console.error('❌ Error saving lamaran:', error);
         
-        // Handle different error types
         let statusCode = 500;
         let errorMessage = error.message;
         
         if (error.name === 'ValidationError') {
             statusCode = 400;
             errorMessage = Object.values(error.errors).map(e => e.message).join(', ');
+        } else if (error.name === 'MongooseError' && error.message.includes('timed out')) {
+            errorMessage = 'Database operation timed out. Please try again.';
         }
         
         res.status(statusCode).json({ 
             success: false, 
             message: errorMessage,
-            errorType: error.name
+            errorType: error.name,
+            ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
         });
     }
 });
@@ -103,14 +146,17 @@ app.use((err, req, res, next) => {
 });
 
 // For Vercel deployment
-module.exports = app; 
+module.exports = app;
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
     const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log(`🚀 Server running on http://localhost:${PORT}`);
         console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
         console.log(`📝 Submit endpoint: http://localhost:${PORT}/api/submit-lamaran`);
     });
+
+    // Handle server timeouts
+    server.setTimeout(30000); // 30 seconds timeout
 }
