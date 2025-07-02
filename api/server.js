@@ -36,7 +36,7 @@ mongoose.connect(process.env.MONGO_URI, {
 // Import Lamaran Model using dynamic import for better error handling
 let Lamaran;
 try {
-    Lamaran = require('./models/lamaran');
+    Lamaran = require('../models/lamaran');
 } catch (err) {
     console.error("❌ Failed to load Lamaran model:", err);
     process.exit(1);
@@ -108,7 +108,7 @@ app.use((err, req, res, next) => {
 });
 
 // For Vercel deployment
-module.exports = app;
+module.exports = app; 
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
