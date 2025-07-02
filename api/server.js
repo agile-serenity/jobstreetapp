@@ -1,5 +1,3 @@
-const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
@@ -21,17 +19,13 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
+
+
+
 // MongoDB connection with improved configuration
-mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000
-})
-.then(() => console.log("✅ Connected to MongoDB"))
-.catch(err => {
-    console.error("❌ MongoDB connection error:", err);
-    process.exit(1);
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/fallbackdb', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
 });
 
 // Import Lamaran Model using dynamic import for better error handling
