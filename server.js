@@ -7,16 +7,7 @@ const cors = require('cors');
 // Initialize Express app
 const app = express();
 
-app.use(enforce.HTTPS({ trustProtoHeader: true }));
 
-// Redirect non-www → www
-app.use((req, res, next) => {
-  const host = req.headers.host;
-  if (host === 'lokerjkt.org') {
-    return res.redirect(301, 'https://www.lokerjkt.org' + req.originalUrl);
-  }
-  next();
-});
 
 // CORS configuration: HANYA mengizinkan origin tertentu dan support credentials
 const allowedOrigins = ['https://www.lokerjkt.org', 'https://lokerjkt.org'];
