@@ -10,7 +10,7 @@ const app = express();
 
 
 // CORS configuration: HANYA mengizinkan origin tertentu dan support credentials
-const allowedOrigins = ['https://www.lokerjkt.org', 'https://lokerjkt.org'];
+const allowedOrigins = ['https://www.lokerjkt.org'];
 
 app.use(cors({
   origin: function (origin, callback) {
