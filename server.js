@@ -7,9 +7,18 @@ const cors = require('cors');
 // Initialize Express app
 const app = express();
 
-// Enhanced CORS configuration
+// CORS configuration: HANYA mengizinkan origin tertentu dan support credentials
+const allowedOrigins = ['https://www.lokerjkt.org'];
+
 app.use(cors({
-    origin: '*',  // Ini akan mengizinkan akses dari semua domain
+    origin: function(origin, callback) {
+        // Mengizinkan request dari Postman atau server-side (no origin)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
@@ -20,7 +29,7 @@ app.use(cors({
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
-// MongoDB connection with improved configuration
+// MongoDB connection
 mongoose.connect(process.env.MONGO_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
@@ -33,7 +42,7 @@ mongoose.connect(process.env.MONGO_URI, {
     process.exit(1);
 });
 
-// Import Lamaran Model using dynamic import for better error handling
+// Import Lamaran model
 let Lamaran;
 try {
     Lamaran = require('./models/lamaran');
@@ -51,7 +60,7 @@ app.get('/health', (req, res) => {
     });
 });
 
-// Submit lamaran endpoint with enhanced validation
+// Submit lamaran endpoint
 app.post('/submit-lamaran', async (req, res) => {
     console.log('📥 Received submission:', {
         headers: req.headers,
@@ -59,7 +68,6 @@ app.post('/submit-lamaran', async (req, res) => {
     });
 
     try {
-        // Basic validation
         if (!req.body || Object.keys(req.body).length === 0) {
             return res.status(400).json({
                 success: false,
@@ -69,48 +77,47 @@ app.post('/submit-lamaran', async (req, res) => {
 
         const lamaranData = new Lamaran(req.body);
         const savedData = await lamaranData.save();
-        
+
         console.log('💾 Saved successfully:', savedData._id);
-        
-        res.status(201).json({ 
-            success: true, 
+
+        res.status(201).json({
+            success: true,
             message: "Lamaran berhasil disimpan!",
-            data: savedData 
+            data: savedData
         });
     } catch (error) {
         console.error('❌ Error saving lamaran:', error);
-        
-        // Handle different error types
+
         let statusCode = 500;
         let errorMessage = error.message;
-        
+
         if (error.name === 'ValidationError') {
             statusCode = 400;
             errorMessage = Object.values(error.errors).map(e => e.message).join(', ');
         }
-        
-        res.status(statusCode).json({ 
-            success: false, 
+
+        res.status(statusCode).json({
+            success: false,
             message: errorMessage,
             errorType: error.name
         });
     }
 });
 
-// Error handling middleware
+// Error handler
 app.use((err, req, res, next) => {
     console.error('🔥 Server Error:', err.stack);
-    res.status(500).json({ 
-        success: false, 
+    res.status(500).json({
+        success: false,
         message: 'Internal server error',
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
 });
 
-// For Vercel deployment
-module.exports = app; 
+// For Vercel
+module.exports = app;
 
-// For local development
+// For local dev
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`📝 Submit endpoint: http://localhost:${PORT}/submit-lamaran`);
